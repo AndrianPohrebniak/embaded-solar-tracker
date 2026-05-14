@@ -4,11 +4,21 @@
 #include <PubSubClient.h>
 #include <esp_wifi.h>
 #include "Config.h"
+#include "LightArray.h"
+#include "Tracker.h"
+#include "PowerSensor.h"
+#include "DisplayModule.h"
 
 WiFiClientSecure netClient;
 PubSubClient mqtt(netClient);
 
+LightArray sensors;
+Tracker solarTracker;
+PowerSensor powerMeter;
+DisplayModule oled;
+
 unsigned long lastPublishMs = 0;
+unsigned long lastDisplayMs = 0;
 unsigned long publishCounter = 0;
 
 void connectWiFi() {
@@ -34,7 +44,7 @@ void connectWiFi() {
 }
 
 void connectMqtt() {
-    String clientId = String("esp32-hello-") + String(random(0xffff), HEX);
+    String clientId = String("esp32-tracker-") + String(random(0xffff), HEX);
     Serial.printf("[MQTT] Connect → %s:%d as %s (user=%s)\n",
         MQTT_BROKER, MQTT_PORT, clientId.c_str(), MQTT_USER);
 
@@ -47,8 +57,13 @@ void connectMqtt() {
 
 void setup() {
     Serial.begin(115200);
-    delay(500);
-    Serial.println("\n=== HELLO-WORLD MQTT TEST (HiveMQ TLS) ===");
+    delay(1000);
+    Serial.println("\n=== SOLAR TRACKER (HiveMQ TLS) ===");
+
+    sensors.init();
+    solarTracker.init();
+    powerMeter.init();
+    oled.init();
 
     connectWiFi();
 
@@ -60,6 +75,8 @@ void setup() {
     mqtt.setBufferSize(1024);
 
     connectMqtt();
+
+    Serial.println("\n--- SOLAR TRACKER READY ---");
 }
 
 void loop() {
@@ -76,18 +93,43 @@ void loop() {
 
     mqtt.loop();
 
-    if (millis() - lastPublishMs >= 2000) {
+    LightData currentLight = sensors.readAll();
+    solarTracker.performTracking(currentLight);
+    delay(STEP_DELAY);
+
+    mqtt.loop();
+
+    if (millis() - lastDisplayMs >= 500) {
+        lastDisplayMs = millis();
+        PowerData pwr = powerMeter.readAll();
+        oled.update(pwr);
+    }
+
+    if (millis() - lastPublishMs >= MQTT_PUBLISH_INTERVAL_MS) {
         lastPublishMs = millis();
         publishCounter++;
 
-        char payload[64];
-        snprintf(payload, sizeof(payload), "Hello World #%lu", publishCounter);
+        LightData ld = sensors.readAll();
+        PowerData p = powerMeter.readAll();
 
-        bool ok = mqtt.publish(MQTT_TOPIC, payload);
-        Serial.printf("[MQTT] publish #%lu → %s (RSSI=%d, heap=%u)\n",
-            publishCounter,
-            ok ? "OK" : "FAIL",
-            WiFi.RSSI(),
-            ESP.getFreeHeap());
+        char payload[320];
+        const int n = snprintf(
+            payload,
+            sizeof(payload),
+            "{\"pan\":%.2f,\"tilt\":%.2f,\"tl\":%d,\"tr\":%d,\"dl\":%d,\"dr\":%d,"
+            "\"v\":%.2f,\"i\":%.2f,\"p\":%.2f}",
+            solarTracker.getPanAngle(),
+            solarTracker.getTiltAngle(),
+            ld.tl, ld.tr, ld.dl, ld.dr,
+            p.voltage, p.current, p.power);
+
+        if (n > 0 && n < static_cast<int>(sizeof(payload))) {
+            bool ok = mqtt.publish(MQTT_TOPIC, payload);
+            Serial.printf("[MQTT] publish #%lu → %s (RSSI=%d, heap=%u)\n",
+                publishCounter,
+                ok ? "OK" : "FAIL",
+                WiFi.RSSI(),
+                ESP.getFreeHeap());
+        }
     }
 }
