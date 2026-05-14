@@ -1,13 +1,14 @@
 #include "WiFiModule.h"
 #include "Config.h"
+#include <esp_wifi.h>
 
 void WiFiModule::init() {
-    Serial.print("\n[WiFi] Підключення до: ");
-    Serial.println(WIFI_SSID);
+    Serial.printf("[WiFi] Підключаюсь до %s\n", WIFI_SSID);
 
-    
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false); // щоб WiFi не спала доки не підключиться(енергозберігаючий режим)
+    WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     while (WiFi.status() != WL_CONNECTED) {
@@ -15,13 +16,12 @@ void WiFiModule::init() {
         Serial.print(".");
     }
 
-    Serial.println("\n[WiFi] ✅ ПІДКЛЮЧЕНО УСПІШНО!");
-    Serial.print("[WiFi] IP-адреса: ");
-    Serial.println(WiFi.localIP());
+    Serial.printf("\n[WiFi] OK ip=%s RSSI=%d dBm ch=%d\n",
+        WiFi.localIP().toString().c_str(), WiFi.RSSI(), WiFi.channel());
 
-    // Після асоціації гарантовано вимикаємо modem-sleep: без цього ESP32
-    // періодично «засинає» і MQTT keepalive / publish зриваються.
-    WiFi.setSleep(false);
+    esp_err_t e1 = esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_err_t e2 = esp_wifi_set_max_tx_power(78);
+    Serial.printf("[WiFi] ps=0x%x tx_power=0x%x\n", e1, e2);
 }
 
 bool WiFiModule::isConnected() {

@@ -1,23 +1,21 @@
 #pragma once
 #include <Arduino.h>
-#include <WiFiClient.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include "LightArray.h"
 #include "PowerSensor.h"
 
 class MqttModule {
 private:
-    WiFiClient standardClient;
+    WiFiClientSecure secureClient;
     PubSubClient mqttClient;
-    unsigned long nextConnectAllowedMs = 0;
-    unsigned long reconnectBackoffMs = 2000;
-    bool hadSuccessfulConnect = false;
-    unsigned int consecutivePublishFailures = 0;
+    unsigned long publishCounter = 0;
 
 public:
     void init();
-    void loop();
+    void connect();
     bool isConnected();
+    void loop();
 
     bool publishTelemetry(const LightData& light, float panDeg, float tiltDeg, const PowerData& pwr);
 };
