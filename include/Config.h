@@ -37,22 +37,14 @@ static constexpr const char* WIFI_SSID = "Andrian";
 static constexpr const char* WIFI_PASS = "yumira20";
 
 // --- HiveMQ Cloud (MQTT over TLS, порт 8883) ---
-// --- Налаштування MQTT (HiveMQ) ---
-// static constexpr const char* MQTT_BROKER = "34d4937c7a8f4488b256bc82e49d4a96.s1.eu.hivemq.cloud";
-// static constexpr int MQTT_PORT = 8883;
-// static constexpr const char* MQTT_USER = "andrian12345678And"; 
-// static constexpr const char* MQTT_PASS = "andrian12345678And";
+static constexpr const char* MQTT_BROKER = "34d4937c7a8f4488b256bc82e49d4a96.s1.eu.hivemq.cloud";
+static constexpr int MQTT_PORT = 8883;
+static constexpr const char* MQTT_USER = "andrian12345678And";
+static constexpr const char* MQTT_PASS = "andrian12345678And";
 
-// Локальний Mosquitto (plain MQTT, порт 1883). На Mac у mosquitto.conf має бути:
-//   listener 1883 0.0.0.0
-//   allow_anonymous true
-// (інакше сокет слухає лише 127.0.0.1 або CONNACK відхиляється — на ESP часто видно rc=-2.)
-static constexpr const char* MQTT_BROKER = "192.168.0.138";
-static constexpr int MQTT_PORT = 1883; 
-static constexpr const char* MQTT_TOPIC = "andrian_diploma_2026/tracker/telemetry"; 
-// static constexpr unsigned long MQTT_PUBLISH_INTERVAL_MS = 2000;
+// Локальний Mosquitto (plain MQTT, порт 1883) — наразі не використовується:
+// static constexpr const char* MQTT_BROKER = "192.168.0.138";
+// static constexpr int MQTT_PORT = 1883;
 
-// static constexpr const char* MQTT_TOPIC = "solartracker/telemetry";
+static constexpr const char* MQTT_TOPIC = "andrian_diploma_2026/tracker/telemetry";
 static constexpr unsigned long MQTT_PUBLISH_INTERVAL_MS = 2000;
-// true: TLS з перевіркою CA (ISRG Root X1, Let's Encrypt) + NTP у WiFiModule. false: setInsecure().
-static constexpr bool MQTT_TLS_VERIFY_CERT = true;

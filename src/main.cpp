@@ -1,75 +1,93 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <esp_wifi.h>
 #include "Config.h"
-#include "LightArray.h"
-#include "Tracker.h"
-#include "PowerSensor.h"
-#include "DisplayModule.h"
-#include "WiFiModule.h"
-#include "MqttModule.h"
 
-LightArray sensors;
-Tracker solarTracker;
-PowerSensor powerMeter;
-DisplayModule oled;
-WiFiModule wifi;
-MqttModule mqtt;
+WiFiClientSecure netClient;
+PubSubClient mqtt(netClient);
 
-unsigned long lastUpdateTime = 0;
-unsigned long lastMqttPublishMs = 0;
+unsigned long lastPublishMs = 0;
+unsigned long publishCounter = 0;
 
-void setup()
-{
-    Serial.begin(115200);
-    delay(1000);
+void connectWiFi() {
+    Serial.printf("[WiFi] Підключаюсь до %s\n", WIFI_SSID);
 
-    // Ініціалізація заліза
-    sensors.init();
-    solarTracker.init();
-    powerMeter.init();
-    oled.init();
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    // Ініціалізація мережі
-    wifi.init();
-    delay(800);
-    mqtt.init();
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
 
-    Serial.println("\n--- SOLAR TRACKER READY ---");
+    Serial.printf("\n[WiFi] OK ip=%s RSSI=%d dBm ch=%d\n",
+        WiFi.localIP().toString().c_str(), WiFi.RSSI(), WiFi.channel());
+
+    esp_err_t e1 = esp_wifi_set_ps(WIFI_PS_NONE);
+    esp_err_t e2 = esp_wifi_set_max_tx_power(78);
+    Serial.printf("[WiFi] ps=0x%x tx_power=0x%x\n", e1, e2);
 }
 
-void loop()
-{
-    // Спочатку MQTT — щоб keepalive/PING оброблялись до delay() і важкої роботи.
-    if (wifi.isConnected()) {
-        mqtt.loop();
+void connectMqtt() {
+    String clientId = String("esp32-hello-") + String(random(0xffff), HEX);
+    Serial.printf("[MQTT] Connect → %s:%d as %s (user=%s)\n",
+        MQTT_BROKER, MQTT_PORT, clientId.c_str(), MQTT_USER);
+
+    if (mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+        Serial.println("[MQTT] ✅ CONNECTED to HiveMQ");
+    } else {
+        Serial.printf("[MQTT] ❌ rc=%d\n", mqtt.state());
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    Serial.println("\n=== HELLO-WORLD MQTT TEST (HiveMQ TLS) ===");
+
+    connectWiFi();
+
+    netClient.setInsecure();
+
+    mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+    mqtt.setKeepAlive(60);
+    mqtt.setSocketTimeout(15);
+    mqtt.setBufferSize(1024);
+
+    connectMqtt();
+}
+
+void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[WiFi] втрата зв'язку → reconnect");
+        connectWiFi();
     }
 
-    // 1. Керування трекером (працює постійно з інтервалом STEP_DELAY)
-    LightData currentLight = sensors.readAll();
-    solarTracker.performTracking(currentLight);
-    delay(STEP_DELAY);
-
-    if (wifi.isConnected()) {
-        mqtt.loop();
+    if (!mqtt.connected()) {
+        connectMqtt();
+        delay(2000);
+        return;
     }
 
-    // 3. Оновлення OLED-екрану (кожні 500 мс)
-    if (millis() - lastUpdateTime >= 500)
-    {
-        lastUpdateTime = millis();
-        PowerData pwr = powerMeter.readAll(); // Зчитуємо енергію тільки для екрану
-        oled.update(pwr);
-    }
+    mqtt.loop();
 
-    // 4. Відправка телеметрії в хмару HiveMQ (кожні MQTT_PUBLISH_INTERVAL_MS)
-    if (wifi.isConnected() && mqtt.isConnected() && (millis() - lastMqttPublishMs >= MQTT_PUBLISH_INTERVAL_MS))
-    {
-        LightData ld = sensors.readAll();
-        PowerData p = powerMeter.readAll();
-        if (mqtt.publishTelemetry(ld, solarTracker.getPanAngle(), solarTracker.getTiltAngle(), p)) {
-            lastMqttPublishMs = millis();
-        } else if (mqtt.isConnected()) {
-            lastMqttPublishMs = millis();
-        }
-        mqtt.loop();
+    if (millis() - lastPublishMs >= 2000) {
+        lastPublishMs = millis();
+        publishCounter++;
+
+        char payload[64];
+        snprintf(payload, sizeof(payload), "Hello World #%lu", publishCounter);
+
+        bool ok = mqtt.publish(MQTT_TOPIC, payload);
+        Serial.printf("[MQTT] publish #%lu → %s (RSSI=%d, heap=%u)\n",
+            publishCounter,
+            ok ? "OK" : "FAIL",
+            WiFi.RSSI(),
+            ESP.getFreeHeap());
     }
 }
