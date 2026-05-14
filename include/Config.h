@@ -22,7 +22,7 @@ const int PAN_MAX = 170;
 const float KP_PAN = 0.02f;
 const float KP_TILT = 0.02f;
 // Поріг чутливості (ADC): занадто великий — панорама не рухається при малих dH (напр. <100).
-const int TOLERANCE = 80;
+const int TOLERANCE = 120;
 // Затримка між кроками трекінгу (мс). Менше — частіше оновлення сервоприводів.
 const int STEP_DELAY = 40;
 
